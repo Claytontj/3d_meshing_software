@@ -1,0 +1,11 @@
+[input]
+video_path = "input/turntable.mp4"
+frame_sampling_rate = 2.0 # Frames per second
+crop = [0, 0, 1024, 1024] # x, y, width, height in source-video pixels
+max_image_dimension = 1600 # Longest edge after cropping
+
+[colmap]
+executable = "colmap" # Command on PATH, or an absolute executable path
+
+[output]
+folder = "output"
