@@ -4,15 +4,24 @@ A small Windows desktop prototype that extracts frames from a turntable video, c
 
 ## Setup
 
-The project is configured for the existing `3d_mesh_app` Conda environment (Python 3.12, OpenCV, NumPy, Pillow, and Tkinter) and the COLMAP launcher at `C:\Users\clayt\Downloads\Design\Design_2\code\colmap-x64-windows-cuda\COLMAP.bat`.
-
-On this Windows machine, double-click `run_turntable_mesh.bat` to launch directly with `3d_mesh_app`. It does not require an editable install.
+For development from source, use Python 3.11 or newer. The source install includes the Python dependencies and the local package; COLMAP can be selected in the app's settings or placed at `colmap\\COLMAP.bat`.
 
 ```powershell
 conda activate 3d_mesh_app
 python -m pip install -r requirements.txt
 turntable-mesh --config config.toml
 ```
+
+For an end-user installation, download the latest `TurntableMesh-Windows-x64.zip` from the [GitHub Releases page](https://github.com/Claytontj/3d_meshing_software/releases). Extract it and run `TurntableMesh.exe`. The release package contains the Python application, its Python dependencies, and a pinned official Windows COLMAP binary; Python, pip, and Git are not required.
+
+The Windows package is built by `.github/workflows/build-windows.yml`. To publish one, push a version tag such as `v0.1.0`:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The packaged COLMAP build uses CUDA for dense reconstruction, so the end user's computer needs a compatible NVIDIA driver and GPU. COLMAP's Windows binaries are not officially code-signed, so Windows Defender may show a warning the first time they are run.
 
 For a direct launch without installing the package, run from this folder:
 

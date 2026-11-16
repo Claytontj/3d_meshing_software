@@ -14,6 +14,7 @@ class Config:
     max_image_dimension: int
     colmap_executable: str
     output_folder: Path
+    config_root: Path | None = None
 
     def validate(self) -> None:
         if self.frame_sampling_rate <= 0:
@@ -48,6 +49,7 @@ def load_config(path: Path) -> Config:
         max_image_dimension=int(input_data["max_image_dimension"]),
         colmap_executable=str(data["colmap"]["executable"]),
         output_folder=_resolve(root, str(data["output"]["folder"])),
+        config_root=root,
     )
     config.validate()
     return config

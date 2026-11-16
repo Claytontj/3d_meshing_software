@@ -1,5 +1,9 @@
 @echo off
 setlocal
 set "PYTHONPATH=%~dp0src"
-"C:\Users\clayt\miniforge3\envs\3d_mesh_app\python.exe" -m turntable_mesh --config "%~dp0config.toml"
+if exist "%~dp0.venv\Scripts\python.exe" (
+    "%~dp0.venv\Scripts\python.exe" -m turntable_mesh --config "%~dp0config.toml"
+) else (
+    py -3 -m turntable_mesh --config "%~dp0config.toml"
+)
 endlocal

@@ -1,0 +1,91 @@
+name: Build Windows application
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  COLMAP_VERSION: "4.2.1"
+  COLMAP_ARCHIVE: "colmap-x64-windows-cuda.zip"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install application and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build application executable
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed `
+            --name TurntableMesh `
+            --paths src `
+            --collect-all pymeshlab `
+            src/turntable_mesh/__main__.py
+
+      - name: Download and bundle official COLMAP Windows binary
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $env:GITHUB_WORKSPACE "dist\TurntableMesh"
+          $archive = Join-Path $env:RUNNER_TEMP $env:COLMAP_ARCHIVE
+          $extract = Join-Path $env:RUNNER_TEMP "colmap-extract"
+          $url = "https://github.com/colmap/colmap/releases/download/$env:COLMAP_VERSION/$env:COLMAP_ARCHIVE"
+
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extract -Force
+
+          $source = Get-ChildItem -Path $extract -Directory | Select-Object -First 1
+          if ($null -ne $source -and (Test-Path (Join-Path $source.FullName "COLMAP.bat"))) {
+            $source = Get-Item $source.FullName
+          } else {
+            $source = Get-Item $extract
+          }
+
+          New-Item -ItemType Directory -Path (Join-Path $bundle "colmap") -Force | Out-Null
+          Copy-Item -Path (Join-Path $source.FullName "*") -Destination (Join-Path $bundle "colmap") -Recurse -Force
+          Invoke-WebRequest `
+            -Uri "https://raw.githubusercontent.com/colmap/colmap/$env:COLMAP_VERSION/README.md" `
+            -OutFile (Join-Path $bundle "COLMAP-LICENSE-AND-NOTICES.md")
+
+      - name: Add portable configuration
+        shell: pwsh
+        run: |
+          Copy-Item config.toml dist\TurntableMesh\config.toml -Force
+
+      - name: Create distributable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path dist\TurntableMesh `
+            -DestinationPath TurntableMesh-Windows-x64.zip `
+            -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurntableMesh-Windows-x64
+          path: TurntableMesh-Windows-x64.zip
+
+      - name: Publish GitHub release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TurntableMesh-Windows-x64.zip

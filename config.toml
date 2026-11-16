@@ -1,11 +1,11 @@
 [input]
-video_path = "C:\\Users\\clayt\\Downloads\\Design\\Design_2\\code\\data\\cup2.0.MOV"
+video_path = ""
 frame_sampling_rate = 3.0
 crop = [0, 0, 0, 0] # x, y, width, height; zero width and height use full frame
 max_image_dimension = 1600
 
 [colmap]
-executable = "C:\\Users\\clayt\\Downloads\\Design\\Design_2\\code\\colmap-x64-windows-cuda\\COLMAP.bat"
+executable = "colmap\\COLMAP.bat"
 
 [output]
-folder = "C:\\Users\\clayt\\Downloads\\outputs_tests"
+folder = "outputs"

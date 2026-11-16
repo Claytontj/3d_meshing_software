@@ -141,6 +141,7 @@ class MeshApp(tk.Tk):
             max_image_dimension=int(self.max_var.get()),
             colmap_executable=self.colmap_var.get().strip(),
             output_folder=output,
+            config_root=root.resolve(),
         )
         config.validate()
         return config

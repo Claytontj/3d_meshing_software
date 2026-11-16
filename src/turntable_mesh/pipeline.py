@@ -105,6 +105,8 @@ def prepare_object_masks(frames: list[Path], workspace: Path, log: Log) -> list[
 
 def _colmap(config: Config, workspace: Path, log: Log, *args: str) -> None:
     executable = Path(config.colmap_executable)
+    if not executable.is_absolute() and config.config_root is not None:
+        executable = config.config_root / executable
     if not executable.is_file():
         raise FileNotFoundError(f"COLMAP launcher not found: {executable}")
     command = [str(executable), *args]
