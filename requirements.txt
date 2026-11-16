@@ -1,0 +1,8 @@
+# Runtime dependencies
+numpy>=2
+Pillow>=10
+opencv-python>=4.8
+pymeshlab>=2023.12
+
+# Install this repository so the turntable_mesh package and CLI are available.
+-e .

@@ -1,11 +1,11 @@
 [input]
-video_path = "input/turntable.mp4"
-frame_sampling_rate = 2.0 # Frames per second
-crop = [0, 0, 1024, 1024] # x, y, width, height in source-video pixels
-max_image_dimension = 1600 # Longest edge after cropping
+video_path = "C:\\Users\\clayt\\Downloads\\Design\\Design_2\\code\\data\\cup2.0.MOV"
+frame_sampling_rate = 3.0
+crop = [0, 0, 0, 0] # x, y, width, height; zero width and height use full frame
+max_image_dimension = 1600
 
 [colmap]
-executable = "colmap" # Command on PATH, or an absolute executable path
+executable = "C:\\Users\\clayt\\Downloads\\Design\\Design_2\\code\\colmap-x64-windows-cuda\\COLMAP.bat"
 
 [output]
-folder = "output"
+folder = "C:\\Users\\clayt\\Downloads\\outputs_tests"

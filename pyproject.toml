@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "turntable-mesh"
 version = "0.1.0"
-description = "Command-line skeleton for object-only turntable reconstruction"
+description = "Desktop prototype for object-masked turntable reconstruction"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["numpy>=2", "Pillow>=10", "opencv-python>=4.8", "pymeshlab>=2023.12"]
 
 [project.scripts]
 turntable-mesh = "turntable_mesh.cli:main"
