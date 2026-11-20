@@ -1,3 +1,3 @@
-from .cli import main
+from turntable_mesh.cli import main
 
 raise SystemExit(main())
