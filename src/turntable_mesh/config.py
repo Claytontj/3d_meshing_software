@@ -15,6 +15,7 @@ class Config:
     colmap_executable: str
     output_folder: Path
     config_root: Path | None = None
+    background_image: Path | None = None
 
     def validate(self) -> None:
         if self.frame_sampling_rate <= 0:
@@ -39,6 +40,7 @@ def load_config(path: Path) -> Config:
     root = path.resolve().parent
     input_data = data["input"]
     raw_video = str(input_data.get("video_path", ""))
+    raw_background = str(input_data.get("background_image", ""))
     crop = tuple(int(value) for value in input_data["crop"])
     if len(crop) != 4:
         raise ValueError("Crop must contain x, y, width, height.")
@@ -50,6 +52,7 @@ def load_config(path: Path) -> Config:
         colmap_executable=str(data["colmap"]["executable"]),
         output_folder=_resolve(root, str(data["output"]["folder"])),
         config_root=root,
+        background_image=_resolve(root, raw_background) if raw_background else None,
     )
     config.validate()
     return config
@@ -61,6 +64,7 @@ def save_config(path: Path, config: Config) -> None:
     content = (
         "[input]\n"
         f"video_path = {json.dumps(str(config.video_path) if config.video_path else '')}\n"
+        f"background_image = {json.dumps(str(config.background_image) if config.background_image else '')}\n"
         f"frame_sampling_rate = {config.frame_sampling_rate}\n"
         f"crop = [{crop}] # x, y, width, height; zero width and height use full frame\n"
         f"max_image_dimension = {config.max_image_dimension}\n\n"

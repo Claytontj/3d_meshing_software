@@ -55,6 +55,7 @@ class MeshApp(tk.Tk):
         settings = ttk.LabelFrame(self, text="Settings")
         settings.pack(fill="x", padx=10, pady=8)
         self.video_var = tk.StringVar(value=str(self.config.video_path or ""))
+        self.background_var = tk.StringVar(value=str(self.config.background_image or ""))
         self.fps_var = tk.StringVar(value=str(self.config.frame_sampling_rate))
         self.crop_vars = [tk.StringVar(value=str(value)) for value in self.config.crop]
         self.max_var = tk.StringVar(value=str(self.config.max_image_dimension))
@@ -64,19 +65,22 @@ class MeshApp(tk.Tk):
         ttk.Label(settings, text="Video").grid(row=0, column=0, sticky="w")
         ttk.Entry(settings, textvariable=self.video_var, state="readonly").grid(row=0, column=1, columnspan=7, sticky="ew", padx=4)
         ttk.Button(settings, text="Choose video", command=self._choose_video).grid(row=0, column=8, padx=4)
-        ttk.Label(settings, text="FPS").grid(row=1, column=0, sticky="w")
-        ttk.Entry(settings, textvariable=self.fps_var, width=8).grid(row=1, column=1, sticky="w")
+        ttk.Label(settings, text="Empty background").grid(row=1, column=0, sticky="w")
+        ttk.Entry(settings, textvariable=self.background_var).grid(row=1, column=1, columnspan=7, sticky="ew", padx=4)
+        ttk.Button(settings, text="Browse", command=self._choose_background).grid(row=1, column=8, padx=4)
+        ttk.Label(settings, text="FPS").grid(row=2, column=0, sticky="w")
+        ttk.Entry(settings, textvariable=self.fps_var, width=8).grid(row=2, column=1, sticky="w")
         for column, (label, variable) in enumerate(zip(("Crop X", "Y", "Width", "Height"), self.crop_vars, strict=True), 2):
-            ttk.Label(settings, text=label).grid(row=1, column=column, sticky="e")
-            ttk.Entry(settings, textvariable=variable, width=7).grid(row=2, column=column, sticky="w")
-        ttk.Label(settings, text="Max dimension").grid(row=1, column=6, sticky="e")
-        ttk.Entry(settings, textvariable=self.max_var, width=8).grid(row=2, column=6, sticky="w")
-        ttk.Label(settings, text="COLMAP").grid(row=3, column=0, sticky="w")
-        ttk.Entry(settings, textvariable=self.colmap_var).grid(row=3, column=1, columnspan=8, sticky="ew", padx=4)
-        ttk.Label(settings, text="Output").grid(row=4, column=0, sticky="w")
-        ttk.Entry(settings, textvariable=self.output_var).grid(row=4, column=1, columnspan=7, sticky="ew", padx=4)
-        ttk.Button(settings, text="Browse", command=self._choose_output).grid(row=4, column=8, padx=4)
-        ttk.Button(settings, text="Save settings", command=self._save_settings).grid(row=5, column=8, pady=5)
+            ttk.Label(settings, text=label).grid(row=2, column=column, sticky="e")
+            ttk.Entry(settings, textvariable=variable, width=7).grid(row=3, column=column, sticky="w")
+        ttk.Label(settings, text="Max dimension").grid(row=2, column=6, sticky="e")
+        ttk.Entry(settings, textvariable=self.max_var, width=8).grid(row=3, column=6, sticky="w")
+        ttk.Label(settings, text="COLMAP").grid(row=4, column=0, sticky="w")
+        ttk.Entry(settings, textvariable=self.colmap_var).grid(row=4, column=1, columnspan=8, sticky="ew", padx=4)
+        ttk.Label(settings, text="Output").grid(row=5, column=0, sticky="w")
+        ttk.Entry(settings, textvariable=self.output_var).grid(row=5, column=1, columnspan=7, sticky="ew", padx=4)
+        ttk.Button(settings, text="Browse", command=self._choose_output).grid(row=5, column=8, padx=4)
+        ttk.Button(settings, text="Save settings", command=self._save_settings).grid(row=6, column=8, pady=5)
         settings.columnconfigure(1, weight=1)
         settings.columnconfigure(7, weight=1)
 
@@ -139,6 +143,7 @@ class MeshApp(tk.Tk):
             output = root / output
         config = Config(
             video_path=Path(self.video_var.get()) if self.video_var.get() else None,
+            background_image=Path(self.background_var.get()) if self.background_var.get() else None,
             frame_sampling_rate=float(self.fps_var.get()),
             crop=tuple(int(value.get()) for value in self.crop_vars),  # type: ignore[arg-type]
             max_image_dimension=int(self.max_var.get()),
@@ -178,6 +183,14 @@ class MeshApp(tk.Tk):
         if path:
             self.output_var.set(path)
 
+    def _choose_background(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Choose an empty turntable/background image",
+            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff"), ("All files", "*.*")],
+        )
+        if path:
+            self.background_var.set(path)
+
     def _save_settings(self) -> None:
         try:
             config = self._settings()
@@ -201,6 +214,8 @@ class MeshApp(tk.Tk):
             config = self._settings()
             if config.video_path is None or not config.video_path.is_file():
                 raise FileNotFoundError("Choose an existing video.")
+            if config.background_image is not None and not config.background_image.is_file():
+                raise FileNotFoundError(f"Empty-background image not found: {config.background_image}")
         except (OSError, ValueError) as error:
             messagebox.showerror("Settings", str(error))
             return
@@ -220,7 +235,7 @@ class MeshApp(tk.Tk):
             try:
                 workspace = new_workspace(config)
                 frames = extract_frames(config, workspace, self._log_from_worker)
-                masks = prepare_object_masks(frames, workspace, self._log_from_worker)
+                masks = prepare_object_masks(frames, workspace, self._log_from_worker, config.background_image)
                 self.events.put(("prepared", (workspace, frames, masks)))
             except Exception as error:
                 self.events.put(("error", error))

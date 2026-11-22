@@ -1,5 +1,6 @@
 [input]
 video_path = ""
+background_image = "" # optional empty turntable/background image, ideally same framing as the video
 frame_sampling_rate = 3.0
 crop = [0, 0, 0, 0] # x, y, width, height; zero width and height use full frame
 max_image_dimension = 1600

@@ -69,11 +69,61 @@ def extract_frames(config: Config, workspace: Path, log: Log) -> list[Path]:
     return selected
 
 
-def prepare_object_masks(frames: list[Path], workspace: Path, log: Log) -> list[Path]:
-    """Create editable initial foreground masks with OpenCV GrabCut."""
+def _load_background_reference(path: Path, shape: tuple[int, int]) -> np.ndarray:
+    """Load a reference image and resize it to the extracted-frame dimensions."""
+    reference = cv2.imread(str(path))
+    if reference is None:
+        raise RuntimeError(f"Cannot read empty-background image: {path}")
+    height, width = shape
+    reference_height, reference_width = reference.shape[:2]
+    if abs(width / height - reference_width / reference_height) > 0.01:
+        raise ValueError(
+            "Empty-background image must have the same aspect ratio as the extracted video frames. "
+            "Use an image taken with the same framing and crop."
+        )
+    if (reference_height, reference_width) != (height, width):
+        reference = cv2.resize(reference, (width, height), interpolation=cv2.INTER_AREA)
+    return reference
+
+
+def _reference_grabcut_mask(image: np.ndarray, reference: np.ndarray) -> np.ndarray:
+    """Build a GrabCut mask from pixels that differ from an empty background."""
+    difference = cv2.absdiff(image, reference)
+    difference = cv2.cvtColor(difference, cv2.COLOR_BGR2GRAY)
+    difference = cv2.GaussianBlur(difference, (5, 5), 0)
+    threshold, changed = cv2.threshold(
+        difference, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    # Suppress small lighting/compression changes while retaining the Otsu result
+    # when the scene has a stronger foreground/background separation.
+    changed = np.where(difference >= max(15.0, threshold), 255, 0).astype(np.uint8)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    changed = cv2.morphologyEx(changed, cv2.MORPH_OPEN, kernel)
+    changed = cv2.morphologyEx(changed, cv2.MORPH_CLOSE, kernel)
+
+    grabcut = np.full(image.shape[:2], cv2.GC_PR_BGD, dtype=np.uint8)
+    grabcut[changed == 0] = cv2.GC_BGD
+    grabcut[changed > 0] = cv2.GC_PR_FGD
+    sure_foreground = cv2.erode(changed, kernel, iterations=1)
+    grabcut[sure_foreground > 0] = cv2.GC_FGD
+    grabcut[0, :] = cv2.GC_BGD
+    grabcut[-1, :] = cv2.GC_BGD
+    grabcut[:, 0] = cv2.GC_BGD
+    grabcut[:, -1] = cv2.GC_BGD
+    return grabcut
+
+
+def prepare_object_masks(
+    frames: list[Path],
+    workspace: Path,
+    log: Log,
+    background_image: Path | None = None,
+) -> list[Path]:
+    """Create editable initial foreground masks with optional background subtraction."""
     mask_dir = workspace / "masks"
     mask_dir.mkdir()
     masks: list[Path] = []
+    reference: np.ndarray | None = None
     for number, frame_path in enumerate(frames, 1):
         image = cv2.imread(str(frame_path))
         if image is None:
@@ -82,18 +132,30 @@ def prepare_object_masks(frames: list[Path], workspace: Path, log: Log) -> list[
         margin_x, margin_y = max(1, width // 20), max(1, height // 20)
         if width <= 2 * margin_x or height <= 2 * margin_y:
             raise ValueError("Frame is too small for mask generation.")
+        if background_image is not None and reference is None:
+            if not background_image.is_file():
+                raise FileNotFoundError(f"Empty-background image not found: {background_image}")
+            reference = _load_background_reference(background_image, (height, width))
+            log(f"Using empty-background reference: {background_image}")
         grabcut = np.zeros((height, width), dtype=np.uint8)
         rectangle = (margin_x, margin_y, width - 2 * margin_x, height - 2 * margin_y)
         try:
-            cv2.grabCut(image, grabcut, rectangle, None, None, 5, cv2.GC_INIT_WITH_RECT)
+            if reference is not None:
+                grabcut = _reference_grabcut_mask(image, reference)
+                cv2.grabCut(image, grabcut, None, None, None, 5, cv2.GC_INIT_WITH_MASK)
+            else:
+                cv2.grabCut(image, grabcut, rectangle, None, None, 5, cv2.GC_INIT_WITH_RECT)
             mask = np.where((grabcut == cv2.GC_FGD) | (grabcut == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
         except cv2.error:
             mask = np.zeros((height, width), dtype=np.uint8)
             cv2.rectangle(mask, (margin_x, margin_y), (width - margin_x, height - margin_y), 255, -1)
-            log(f"GrabCut could not segment frame {number}; edit its rectangular starter mask.")
+            if reference is not None:
+                log(f"Background-assisted GrabCut could not segment frame {number}; edit its starter mask.")
+            else:
+                log(f"GrabCut could not segment frame {number}; edit its rectangular starter mask.")
         if not np.any(mask):
             cv2.rectangle(mask, (margin_x, margin_y), (width - margin_x, height - margin_y), 255, -1)
-            log(f"GrabCut returned an empty mask for frame {number}; edit its rectangular starter mask.")
+            log(f"GrabCut returned an empty mask for frame {number}; edit its starter mask.")
         destination = mask_dir / f"{frame_path.name}.png"
         if not cv2.imwrite(str(destination), mask):
             raise OSError(f"Could not write {destination}")

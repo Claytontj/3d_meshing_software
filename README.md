@@ -30,12 +30,12 @@ $env:PYTHONPATH = "src"
 python -m turntable_mesh --config config.toml
 ```
 
-`config.toml` holds the video path, frames per second, fixed crop `[x, y, width, height]`, maximum frame dimension, COLMAP launcher, and output folder. A crop width and height of zero use the whole frame. The desktop form lets you edit and save these settings. Relative paths are resolved from the config file's folder. No video is selected by default.
+`config.toml` holds the video path, optional empty-turntable/background image, frames per second, fixed crop `[x, y, width, height]`, maximum frame dimension, COLMAP launcher, and output folder. A crop width and height of zero use the whole frame. The optional background image should show the same camera, turntable, lighting, and framing with the object removed; it is used to remove the base/background before GrabCut. The desktop form lets you edit and save these settings. Relative paths are resolved from the config file's folder. No video or background image is selected by default.
 
 ## Workflow
 
 1. Choose a video in the app. No reconstruction begins on launch or video selection.
-2. Adjust FPS and crop, then click **Extract frames + generate masks**. OpenCV GrabCut creates an initial mask per frame.
+2. Optionally choose an **Empty background** image. Adjust FPS and crop, then click **Extract frames + generate masks**. The reference image is compared with each frame and the result is refined with OpenCV GrabCut. Without a reference image, the original rectangle-based GrabCut behavior is used.
 3. Use **Previous** and **Next** to inspect every mask. Left drag paints the selected **Keep object** or **Erase base/background** mode; right drag always erases. Dark areas are excluded. Changes save when you release the brush or change frames.
 4. Check **I reviewed the masks and removed the base**, then click **Run COLMAP**. This runs feature extraction with masks, exhaustive matching, sparse mapping, image undistortion, dense PatchMatch stereo, stereo fusion with masks, and Poisson meshing.
 5. The app displays the path to `object_mesh.ply`. Each timestamped output folder also holds frames, masks, COLMAP data, `colmap_commands.log`, and `colmap_output.log`. All COLMAP commands and their output appear in the app log.
