@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import queue
 import struct
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +13,7 @@ from unittest.mock import patch
 import numpy as np
 
 from turntable_mesh.app import MeshApp
-from turntable_mesh.mesh_cleanup import export_solidworks_stl
+from turntable_mesh.mesh_cleanup import _cleanup_command, export_solidworks_stl
 
 
 @unittest.skipUnless(importlib.util.find_spec("pymeshlab"), "PyMeshLab is not installed")
@@ -126,6 +127,17 @@ class ExportInterfaceTests(unittest.TestCase):
         self.assertIn("export failed", self.app.stl_var.get())
         with self.assertRaises(queue.Empty):
             self.app.events.get_nowait()
+
+
+class PackagedCleanupTests(unittest.TestCase):
+    def test_packaged_cleanup_reenters_executable_in_cleanup_mode(self):
+        mesh = Path("input.ply")
+        destination = Path("output.stl")
+        with patch.object(sys, "executable", "TurntableMesh.exe"), patch.object(sys, "frozen", True, create=True):
+            self.assertEqual(
+                _cleanup_command(mesh, destination),
+                ["TurntableMesh.exe", "--cleanup", "input.ply", "output.stl"],
+            )
 
 
 if __name__ == "__main__":

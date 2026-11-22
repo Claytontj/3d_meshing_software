@@ -64,6 +64,13 @@ def clean_mesh(mesh: Path, destination: Path, log: Callable[[str], None]) -> Pat
     return destination
 
 
+def _cleanup_command(mesh: Path, destination: Path) -> list[str]:
+    """Build the child-process command for source and packaged execution."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--cleanup", str(mesh), str(destination)]
+    return [sys.executable, "-u", str(Path(__file__).resolve()), str(mesh), str(destination)]
+
+
 def export_solidworks_stl(mesh: Path, log: Callable[[str], None]) -> Path:
     """Stream cleanup progress while keeping native library failures out of Tk."""
     mesh = mesh.resolve()
@@ -73,7 +80,7 @@ def export_solidworks_stl(mesh: Path, log: Callable[[str], None]) -> Path:
     if mesh == destination:
         raise ValueError("Select the source PLY mesh, rather than the exported STL.")
     log_path = mesh.parent / "mesh_cleanup.log"
-    command = [sys.executable, "-u", str(Path(__file__).resolve()), str(mesh), str(destination)]
+    command = _cleanup_command(mesh, destination)
     last_line = "No error details were returned."
     with log_path.open("a", encoding="utf-8") as output_log:
         output_log.write(f"\nCleaning mesh: {mesh}\n")

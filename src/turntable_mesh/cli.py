@@ -15,6 +15,15 @@ def _default_config_path() -> Path:
 
 
 def main() -> int:
+    # PyInstaller bundles the whole application as one executable. The mesh
+    # cleanup worker re-enters that executable with a private cleanup mode
+    # instead of trying to pass a Python script path to the executable.
+    if len(sys.argv) > 1 and sys.argv[1] == "--cleanup":
+        from .mesh_cleanup import main as cleanup_main
+
+        sys.argv[1:] = sys.argv[2:]
+        return cleanup_main()
+
     parser = argparse.ArgumentParser(description="Turntable mesh desktop prototype")
     parser.add_argument("--config", type=Path, default=_default_config_path())
     args = parser.parse_args()
