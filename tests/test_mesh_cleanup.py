@@ -13,7 +13,7 @@ from unittest.mock import patch
 import numpy as np
 
 from turntable_mesh.app import MeshApp
-from turntable_mesh.mesh_cleanup import _cleanup_command, export_solidworks_stl
+from turntable_mesh.mesh_cleanup import StlExports, _cleanup_command, export_solidworks_stl
 
 
 @unittest.skipUnless(importlib.util.find_spec("pymeshlab"), "PyMeshLab is not installed")
@@ -23,12 +23,13 @@ class MeshCleanupTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.folder = Path(self.temporary.name)
 
-    def assert_binary_stl(self, path):
+    def assert_binary_stl(self, path, max_faces=50_000):
         with path.open("rb") as source:
             header = source.read(84)
         faces = struct.unpack("<I", header[80:84])[0]
         self.assertGreater(faces, 0)
-        self.assertLessEqual(faces, 50_000)
+        if max_faces is not None:
+            self.assertLessEqual(faces, max_faces)
         self.assertEqual(path.stat().st_size, 84 + 50 * faces)
         return faces
 
@@ -46,11 +47,13 @@ class MeshCleanupTests(unittest.TestCase):
         ms.save_current_mesh(str(source))
         original_hash = hashlib.sha256(source.read_bytes()).digest()
         progress = []
-        destination = export_solidworks_stl(source, progress.append)
-        self.assertEqual(destination, self.folder / "solidworks_ready.stl")
-        self.assert_binary_stl(destination)
+        exports = export_solidworks_stl(source, progress.append)
+        self.assertEqual(exports.direct, self.folder / "solidworks_direct.stl")
+        self.assertEqual(exports.cleaned, self.folder / "solidworks_ready.stl")
+        self.assert_binary_stl(exports.direct, max_faces=None)
+        self.assert_binary_stl(exports.cleaned)
         self.assertEqual(hashlib.sha256(source.read_bytes()).digest(), original_hash)
-        ms.load_new_mesh(str(destination))
+        ms.load_new_mesh(str(exports.cleaned))
         self.assertGreater(ms.current_mesh().face_number(), 0)
         self.assertTrue(any("Final manifold repair" in line for line in progress))
         self.assertIn("STL saved:", (self.folder / "mesh_cleanup.log").read_text(encoding="utf-8"))
@@ -64,9 +67,22 @@ class MeshCleanupTests(unittest.TestCase):
         source = self.folder / "small.ply"
         ms.save_current_mesh(str(source))
         progress = []
-        destination = export_solidworks_stl(source, progress.append)
-        self.assertEqual(self.assert_binary_stl(destination), count)
+        exports = export_solidworks_stl(source, progress.append)
+        self.assertEqual(self.assert_binary_stl(exports.direct), count)
+        self.assertEqual(self.assert_binary_stl(exports.cleaned), count)
         self.assertTrue(any("skipping decimation" in line for line in progress))
+
+    def test_cleanup_can_be_skipped_while_direct_stl_is_created(self):
+        import pymeshlab
+
+        ms = pymeshlab.MeshSet()
+        ms.create_sphere(subdiv=1)
+        source = self.folder / "direct_only.ply"
+        ms.save_current_mesh(str(source))
+        exports = export_solidworks_stl(source, lambda message: None, run_cleanup=False)
+        self.assertEqual(exports.cleaned, None)
+        self.assert_binary_stl(exports.direct)
+        self.assertFalse((self.folder / "solidworks_ready.stl").exists())
 
     def test_invalid_mesh_reports_failure_and_preserves_existing_export(self):
         source = self.folder / "broken.ply"
@@ -94,7 +110,7 @@ class ExportInterfaceTests(unittest.TestCase):
 
     def test_export_uses_current_mesh_without_a_picker(self):
         self.app.mesh_path = Path("object_mesh.ply")
-        result = Path("solidworks_ready.stl")
+        result = StlExports(Path("solidworks_direct.stl"), Path("solidworks_ready.stl"))
         with patch("turntable_mesh.app.export_solidworks_stl", return_value=result) as exporter:
             with patch("turntable_mesh.app.filedialog.askopenfilename") as picker:
                 with patch.object(self.app, "_start_worker", side_effect=lambda work: work()):
@@ -112,7 +128,10 @@ class ExportInterfaceTests(unittest.TestCase):
     def test_saved_mesh_selection_is_exported(self):
         selected = str(Path.cwd() / "previous.ply")
         with patch("turntable_mesh.app.filedialog.askopenfilename", return_value=selected):
-            with patch("turntable_mesh.app.export_solidworks_stl", return_value=Path("ready.stl")) as exporter:
+            with patch(
+                "turntable_mesh.app.export_solidworks_stl",
+                return_value=StlExports(Path("direct.stl"), Path("ready.stl")),
+            ) as exporter:
                 with patch.object(self.app, "_start_worker", side_effect=lambda work: work()):
                     self.app._export_stl()
         self.assertEqual(exporter.call_args.args[0], Path(selected))
@@ -132,11 +151,17 @@ class ExportInterfaceTests(unittest.TestCase):
 class PackagedCleanupTests(unittest.TestCase):
     def test_packaged_cleanup_reenters_executable_in_cleanup_mode(self):
         mesh = Path("input.ply")
-        destination = Path("output.stl")
         with patch.object(sys, "executable", "TurntableMesh.exe"), patch.object(sys, "frozen", True, create=True):
             self.assertEqual(
-                _cleanup_command(mesh, destination),
-                ["TurntableMesh.exe", "--cleanup", "input.ply", "output.stl"],
+                _cleanup_command(mesh, True),
+                ["TurntableMesh.exe", "--cleanup", "input.ply"],
+            )
+
+    def test_packaged_direct_only_cleanup_command_skips_cleanup(self):
+        with patch.object(sys, "executable", "TurntableMesh.exe"), patch.object(sys, "frozen", True, create=True):
+            self.assertEqual(
+                _cleanup_command(Path("input.ply"), False),
+                ["TurntableMesh.exe", "--cleanup", "input.ply", "--skip-cleanup"],
             )
 
 

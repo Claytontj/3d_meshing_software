@@ -12,7 +12,7 @@ import numpy as np
 from PIL import Image, ImageTk
 
 from .config import Config, load_config, save_config
-from .mesh_cleanup import export_solidworks_stl
+from .mesh_cleanup import StlExports, export_solidworks_stl
 from .pipeline import (
     collect_mesh_output,
     extract_frames,
@@ -46,6 +46,7 @@ class MeshApp(tk.Tk):
         self.selected_video = False
         self.run_started = False
         self.mesh_path: Path | None = None
+        self.direct_stl_path: Path | None = None
         self.stl_path: Path | None = None
         self._build()
         self.after(100, self._poll_events)
@@ -120,8 +121,10 @@ class MeshApp(tk.Tk):
         ttk.Button(result, text="Open output folder", command=self._open_output).pack(side="right")
         export = ttk.Frame(self)
         export.pack(fill="x", padx=10, pady=4)
-        self.export_button = ttk.Button(export, text="3. Clean mesh + export STL", command=self._export_stl)
+        self.export_button = ttk.Button(export, text="3. Export STL files", command=self._export_stl)
         self.export_button.pack(side="left")
+        self.cleanup_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(export, text="Also create cleaned STL", variable=self.cleanup_var).pack(side="left", padx=8)
         self.stl_var = tk.StringVar(value="STL: use the current mesh, or choose a saved PLY")
         ttk.Label(export, textvariable=self.stl_var, wraplength=700).pack(side="left", padx=10)
         log_frame = ttk.LabelFrame(self, text="Progress and COLMAP commands")
@@ -159,6 +162,7 @@ class MeshApp(tk.Tk):
             self.prepared_config = None
             self.run_started = False
             self.mesh_path = None
+            self.direct_stl_path = None
             self.stl_path = None
             self.stl_var.set("STL: use the current mesh, or choose a saved PLY")
             self.current_image = None
@@ -206,6 +210,7 @@ class MeshApp(tk.Tk):
         self.masks = []
         self.run_started = False
         self.mesh_path = None
+        self.direct_stl_path = None
         self.stl_path = None
         self.stl_var.set("STL: waiting for reconstruction")
         self.reviewed_var.set(False)
@@ -259,14 +264,19 @@ class MeshApp(tk.Tk):
             if not selected:
                 return
             mesh = Path(selected)
-        self._log(f"Starting mesh cleanup and STL export: {mesh}")
+        if self.cleanup_var.get():
+            self._log(f"Exporting direct STL and optional cleaned STL: {mesh}")
+        else:
+            self._log(f"Exporting direct STL without cleanup: {mesh}")
         self.stl_path = None
-        self.stl_var.set("STL: cleaning and exporting...")
+        self.direct_stl_path = None
+        self.stl_var.set("STL: exporting...")
+        run_cleanup = self.cleanup_var.get()
 
         def work() -> None:
             try:
-                destination = export_solidworks_stl(mesh, self._log_from_worker)
-                self.events.put(("exported", destination))
+                exports = export_solidworks_stl(mesh, self._log_from_worker, run_cleanup=run_cleanup)
+                self.events.put(("exported", exports))
             except Exception as error:
                 self.events.put(("export_error", error))
 
@@ -364,10 +374,18 @@ class MeshApp(tk.Tk):
                     self.result_var.set(f"Mesh: {self.mesh_path}")
                     self._update_run_button()
                 elif kind == "exported":
-                    self.stl_path = payload  # type: ignore[assignment]
+                    exports = payload  # type: ignore[assignment]
+                    assert isinstance(exports, StlExports)
+                    self.direct_stl_path = exports.direct
+                    self.stl_path = exports.cleaned or exports.direct
                     self.busy = False
                     self.prepare_button.configure(state="normal")
-                    self.stl_var.set(f"STL: {payload}")
+                    if exports.cleaned:
+                        self.stl_var.set(
+                            f"Direct STL: {exports.direct}\nCleaned STL: {exports.cleaned}"
+                        )
+                    else:
+                        self.stl_var.set(f"Direct STL: {exports.direct}\nCleaned STL: not created")
                     self._update_run_button()
                 elif kind in ("error", "export_error"):
                     if kind == "export_error":
